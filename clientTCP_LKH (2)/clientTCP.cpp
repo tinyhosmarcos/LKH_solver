@@ -27,10 +27,8 @@ using namespace std;
 namespace fs = std::experimental::filesystem::v1;
 mutex m;
 
-string servers[]={"127.0.0.1","35.202.151.229"};
+string servers[]={"127.0.0.1","34.151.199.242"};
 pair<string,string> file_parameters;
-
-//Functions lkh solver parallel
 
 // Convert an integer to a string with a specific number of digits
 string int_to_string(int number, int digits){
@@ -171,9 +169,6 @@ double parallel_solver(vector<string> paths, unsigned int num_threads){
     return best_score;
 }
 
-//endfunctions
-
-
 int main(int argc, char** argv){
     int port,ip_server,num_files_CSV;
     stringstream geek(argv[1]);
@@ -208,14 +203,20 @@ int main(int argc, char** argv){
         close(SocketFD);
         exit(EXIT_FAILURE);
     }
+
     // read files
     fstream file;    
     //send num cores
-    n = write(SocketFD,argv[3],1);
+    unsigned int number_cores = thread::hardware_concurrency();
+    cout << "Number of cores: " << number_cores << endl;
+    double best_score;
+    //send num_cores
+    n = write(SocketFD,to_string(number_cores).c_str(),1);  //1 bytes
+
     //receive num files
-    string buffer_receive(10,0);
-    n=read(SocketFD,&buffer_receive[0],10);
-    cout<<"[LOG] : receive_number"<<buffer_receive<<endl;
+    string buffer_receive(1,0);
+    n=read(SocketFD,&buffer_receive[0],11);
+    cout<<"[LOG] : receive_number: "<<buffer_receive<<endl;
     stringstream geek3(buffer_receive);
     geek3>>num_files_CSV;
     //end num_files
@@ -241,25 +242,23 @@ int main(int argc, char** argv){
     }
     //end receive files CSV
 
-    //start LKH process
     string path = "dataset"; // Folder containing the cvs. files
     vector<string> paths; // Store all cvs. files paths
     
-        // Collect the paths of all csv files within dataset
+    // Collect the paths of all csv files within dataset
     for (const auto & entry : fs::directory_iterator(path)){
         //cout << entry.path() << endl;
         string path_string = entry.path().string();
         paths.push_back(path_string);
     }
-
-        // Parallel part
-    unsigned int number_threads = thread::hardware_concurrency();
-    cout << "Number of threads: " << number_threads << endl;
-    double best_score;
+    cout<<"[LOG]: READ dataset: "<<paths.size()<<endl;
+    //end lecture files
     
+    // Parallel part
+      
     chrono::time_point<std::chrono::high_resolution_clock> start, end;
     start = chrono::high_resolution_clock::now();
-    best_score = parallel_solver(paths, number_threads);
+    best_score = parallel_solver(paths, number_cores);
 	end = chrono::high_resolution_clock::now();
     int64_t duration = chrono::duration_cast<chrono::seconds>(end - start).count();
     cout << endl << setw(10) << "Duration: " + to_string(duration) + " s\n";
@@ -276,9 +275,25 @@ int main(int argc, char** argv){
         outfile << best_score;
         //cout << "Done Writing!" << endl;
     }
-
+    outfile.close();
     //end LKH process
-    
+    //send score
+    outfile.open(filename,std::ios_base::in);
+    std::string contents((std::istreambuf_iterator<char>(outfile)), std::istreambuf_iterator<char>());
+            cout<<"[LOG] : Transmission Data Size "<<contents.length()<<" Bytes.\n";
+
+            cout<<"[LOG] : Sending Score...\n";
+
+            int bytes_sent = send(SocketFD , contents.c_str() , 6000 , 0 );
+            cout<<"[LOG] : Transmitted Score Size "<<bytes_sent<<" Bytes.\n";
+
+            cout<<"[LOG] : Score Transfer Complete.\n";
+            outfile.close();
+
+
+    int basura; cin>>basura;
+
     close(SocketFD);
+
     return 0;
 }
